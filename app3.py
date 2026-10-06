@@ -11,16 +11,13 @@ from torch import optim
 import torch.nn.functional as F
 
 
-# TODO: adjustment: the width of the game is larger and the paddle initial
-# location is also random. But the dynamics still resolves in one step
-# (which means that for many cases, there is no policy that can achieve
-# the goal, especially when the width is large).
+# TODO: adjustment: now the game has a HEIGHT is larger than 1,
+# therefore the paddle may move HEIGHT - 1 times to try and catch the ball.
 
-# Note: the paddle location and target location are always mapped linearly
-# from [0, ... WIDTH-1] to [-1.0, 1.0] before being entered into the policy
-# model.
 
 WIDTH = 5
+HEIGHT = 5
+assert HEIGHT >= WIDTH  # Simpler: we know that we can always catch the ball.
 
 """
 We consider a "mini-breakout" game where the paddle should catch the ball.
@@ -36,21 +33,8 @@ move right for the next tick to try and catch the ball.
 def max_mean_reward():
     """
     Compute the reward for the optimal strategy.
-
-    In the general case (WIDTH >= 2), for every target position 
-    except on the boundary, there are only three initial positions of the pad,
-    in the neighbourhood of the target, where a movement allows to catch the ball.
-    On the boundary, there are two. So `(WIDTH - 2) * 3 + 2 * 2` cases
-    where the reward can be 1, otherwise that's 0.
-    Since there are WIDTH^2 possible combinations of the target position and 
-    paddle position, the maximal mean reward is:
-
-        ((WIDTH - 2) * 3 + 2 * 2) / (WIDTH * WIDTH)
-    
-    Now, "by chance", the formula also work when `WIDTH = 1`; in this
-    case the maximal mean reward is `1`.
     """
-    return ((WIDTH - 2) * 3 + 2 * 2) / (WIDTH * WIDTH)
+    return 1.0
 
 def sample_position(num_samples=1):
     "Random position values in {0, ..., WIDTH-1}, mapped into [-1.0, 1.0]"
@@ -84,18 +68,25 @@ def sample_u(policy, num_samples=1):
     u = u_values[i]
     return u
 
-def reward(x_0, x_ref, u):
-    x = x_0 + 2.0 * u / (WIDTH - 1.0)
-    x = x.clamp(-1.0, 1.0)
+def step(x, u):
+    x_next = x + 2.0 * u / (WIDTH - 1.0)
+    x_next = x_next.clamp(-1.0, 1.0)    
+    return x_next
+
+def reward(x, x_ref, u):
     return (x == x_ref).float()
 
 def mean_reward(model, num_samples=1_000):
-    x_0 = sample_position(num_samples)
-    x_ref = sample_position(num_samples)
-    input = torch.stack((x_0, x_ref), dim=1)
-    policy = model(input)
-    u = sample_u(policy, num_samples).squeeze(1)
-    r = reward(x_0, x_ref, u)
+    n = num_samples
+    with torch.no_grad():
+        x_t = sample_position(n)
+        x_ref = sample_position(n)
+        for _t in range(HEIGHT - 1):
+            state = torch.stack((x_t, x_ref), dim=1)
+            policy = model(state)
+            u_t = sample_u(policy, n).squeeze(1)
+            x_t = step(x_t, u_t)
+        r = reward(x_t, x_ref, u_t)
     return r.mean().item()
 
 def mean_reward_grad(model, num_samples=1_000):
@@ -105,19 +96,32 @@ def mean_reward_grad(model, num_samples=1_000):
     The result is stored in `model.grad`.
     """
     n = num_samples
-    x_0 = sample_position(n)
-    x_ref = sample_position(n)
-    input = torch.stack((x_0, x_ref), dim=1)
-    logits = model(input)
-    log_probs = F.log_softmax(logits, dim=-1)
-    u_values = torch.tensor([-1, 0, 1])
     with torch.no_grad():
-        probs = log_probs.exp()
-        index = torch.multinomial(probs, num_samples=1)
-        u = u_values[index].squeeze(1)
-        r = reward(x_0, x_ref, u)
-    selected_log_probs = log_probs.gather(dim=1, index=index).squeeze(1)
-    value = (r * selected_log_probs).mean()
+        x_0 = sample_position(n)
+        x_ref = sample_position(n)
+        u_choices = torch.tensor([-1, 0, 1])
+        x = [x_0]
+        indices = []
+        for _t in range(HEIGHT - 1):
+            x_t = x[-1]
+            state = torch.stack((x_t, x_ref), dim=1)    
+            logits = model(state)
+            probs = logits.softmax(dim=-1)
+            index = torch.multinomial(probs, num_samples=1)
+            indices.append(index)
+            u_t = u_choices[index].squeeze(1)
+            x_t = step(x[-1], u_t) 
+            x.append(x_t)
+    r = reward(x[-1], x_ref, u_t)
+
+    log_probs_sum = 0.0
+    for t in range(HEIGHT - 1):
+        state = torch.stack((x[t], x_ref), dim=1)
+        logits = model(state)
+        log_probs = F.log_softmax(logits, dim=-1)
+        log_probs_sum = log_probs_sum + log_probs.gather(dim=1, index=indices[t]).squeeze(1)
+
+    value = (r * log_probs_sum).mean()
     model.zero_grad()
     value.backward()
 
