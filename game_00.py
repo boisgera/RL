@@ -34,7 +34,7 @@ def new_round():
     global frame0, ball_x, move
     frame0 = pyxel.frame_count
     ball_x = torch.randint(-1, 2, ())
-    if manual: # 🧑
+    if manual:  # 🧑
         move = 0  # by default, don't move
     else:  # 🤖
         with torch.no_grad():
@@ -57,25 +57,27 @@ def update():
         new_round()
 
 
+def screen_x(x):
+    "Map x from [-1.0, 1.0] (leftmost/rightmost) to the cell index"
+    index = round((float(x) + 1.0) / 2.0 * (GRID_SHAPE[0] - 1))
+    return index
+
+
 def draw():
     elapsed_time = pyxel.frame_count - frame0
     paddle_x = move if elapsed_time == 1 else 0
     success = (paddle_x == ball_x).item()
-    background_color = (
-        pyxel.COLOR_BLACK
-        if elapsed_time == 0
-        else STATUS_COLOR[success]
-    )
+    background_color = pyxel.COLOR_BLACK if elapsed_time == 0 else STATUS_COLOR[success]
     pyxel.cls(background_color)
     pyxel.rect(
-        (paddle_x + 1) * PIXEL_SIZE,
-        PIXEL_SIZE,
+        screen_x(paddle_x) * PIXEL_SIZE,
+        (GRID_SHAPE[1] - 1) * PIXEL_SIZE,
         PIXEL_SIZE,
         PIXEL_SIZE,
         pyxel.COLOR_WHITE,
     )
     pyxel.rect(
-        (ball_x + 1) * PIXEL_SIZE,
+        screen_x(ball_x),
         elapsed_time * PIXEL_SIZE,
         PIXEL_SIZE,
         PIXEL_SIZE,
