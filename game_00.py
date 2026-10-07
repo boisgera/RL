@@ -77,7 +77,7 @@ def draw():
         pyxel.COLOR_WHITE,
     )
     pyxel.rect(
-        screen_x(ball_x),
+        screen_x(ball_x) * PIXEL_SIZE,
         elapsed_time * PIXEL_SIZE,
         PIXEL_SIZE,
         PIXEL_SIZE,
