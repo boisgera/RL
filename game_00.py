@@ -110,7 +110,6 @@ pyxel.init(
     GRID_SHAPE[0] * PIXEL_SIZE,
     INFO_HEIGHT + GRID_SHAPE[1] * PIXEL_SIZE,
     title="Breakout 00",
-    # display_scale=40,
     fps=FPS,
 )
 new_round()
