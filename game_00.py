@@ -11,7 +11,8 @@ import torch
 PIXEL_SIZE = 40
 INFO_HEIGHT = 16  # space above the arena for two lines of text
 GRID_SHAPE = (3, 2)
-FPS = 1
+FPS = 30
+STEP_FRAMES = 30  # frames per time step
 STATUS_COLOR = {True: pyxel.COLOR_LIME, False: pyxel.COLOR_RED}
 
 
@@ -48,14 +49,15 @@ def update():
     global manual, move
     if pyxel.btnp(pyxel.KEY_SPACE):
         manual = not manual
-    elapsed_time = pyxel.frame_count - frame0
+    elapsed_time = (pyxel.frame_count - frame0) // STEP_FRAMES
+    if elapsed_time == 2:
+        new_round()
+        elapsed_time = 0
     if manual and elapsed_time == 0:
         if pyxel.btnp(pyxel.KEY_LEFT):
             move = -1.0
         if pyxel.btnp(pyxel.KEY_RIGHT):
             move = 1.0
-    if elapsed_time == 2:
-        new_round()
 
 
 def column(x):
@@ -65,7 +67,7 @@ def column(x):
 
 
 def draw():
-    elapsed_time = pyxel.frame_count - frame0
+    elapsed_time = (pyxel.frame_count - frame0) // STEP_FRAMES
     paddle_x = move if elapsed_time == 1 else 0
     success = (paddle_x == ball_x).item()
     background_color = pyxel.COLOR_BLACK if elapsed_time == 0 else STATUS_COLOR[success]
