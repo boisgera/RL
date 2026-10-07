@@ -66,19 +66,23 @@ def column(x):
     return index
 
 
-def draw():
-    elapsed_time = (pyxel.frame_count - frame0) // STEP_FRAMES
-    paddle_x = move if elapsed_time == 1 else 0
-    success = (paddle_x == ball_x).item()
-    background_color = pyxel.COLOR_BLACK if elapsed_time == 0 else STATUS_COLOR[success]
-    pyxel.cls(pyxel.COLOR_BLACK)
+def draw_header(elapsed_time, success):
     mode = "MANUAL" if manual else "AUTO"
     pyxel.text(2, 2, f"{mode} (hit space to toggle)", pyxel.COLOR_WHITE)
     if elapsed_time == 1:
         action = {-1: "<-", 0: "--", 1: "->"}[int(move)]
         pyxel.text(2, 9, action, pyxel.COLOR_WHITE)
         status = "SUCCESS" if success else "FAILURE"
-        pyxel.text(14, 9, status, background_color)
+        pyxel.text(14, 9, status, STATUS_COLOR[success])
+
+
+def draw():
+    elapsed_time = (pyxel.frame_count - frame0) // STEP_FRAMES
+    paddle_x = move if elapsed_time == 1 else 0
+    success = (paddle_x == ball_x).item()
+    background_color = pyxel.COLOR_BLACK if elapsed_time == 0 else STATUS_COLOR[success]
+    pyxel.cls(pyxel.COLOR_BLACK)
+    draw_header(elapsed_time, success)
     pyxel.rect(
         0,
         INFO_HEIGHT,
