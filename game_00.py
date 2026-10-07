@@ -11,6 +11,8 @@ import torch
 PIXEL_SIZE = 5
 GRID_SHAPE = (3, 2)
 FPS = 1
+STATUS_COLOR = {True: pyxel.COLOR_LIME, False: pyxel.COLOR_RED}
+
 
 # Policy Model
 # ------------------------------------------------------------------------------
@@ -20,7 +22,7 @@ policy.load_state_dict(torch.load("models/model00.pt"))
 
 # Game State
 # ------------------------------------------------------------------------------
-manual = False # game controlled by the user (keyboard) or the models
+manual = False  # user 🧑 or model 🤖 controlled game
 ball_x = None
 move = None
 frame0 = None
@@ -31,10 +33,10 @@ frame0 = None
 def new_round():
     global frame0, ball_x, move
     frame0 = pyxel.frame_count
-    ball_x = torch.randint(-1, 1, ())
-    if manual:
+    ball_x = torch.randint(-1, 2, ())
+    if manual: # 🧑
         move = 0  # by default, don't move
-    else:  # auto
+    else:  # 🤖
         with torch.no_grad():
             input = torch.tensor([ball_x]).float()
             choice = policy(input).argmax()
@@ -45,22 +47,40 @@ def update():
     global manual, move
     if pyxel.btnp(pyxel.KEY_SPACE):
         manual = not manual
-    t = pyxel.frame_count - frame0
-    if manual and t == 0:
+    elapsed_time = pyxel.frame_count - frame0
+    if manual and elapsed_time == 0:
         if pyxel.btnp(pyxel.KEY_LEFT):
-            move = -1
+            move = -1.0
         if pyxel.btnp(pyxel.KEY_RIGHT):
-            move = 1
-    if t == 2:
+            move = 1.0
+    if elapsed_time == 2:
         new_round()
 
 
 def draw():
-    t = pyxel.frame_count - frame0
-    paddle_x = move if t == 1 else 0
-    pyxel.cls(pyxel.COLOR_BLACK if t == 0 else pyxel.COLOR_LIME if paddle_x == ball_x else pyxel.COLOR_RED)
-    pyxel.rect((paddle_x + 1) * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE, pyxel.COLOR_WHITE)
-    pyxel.rect((ball_x + 1) * PIXEL_SIZE, t * PIXEL_SIZE, PIXEL_SIZE, PIXEL_SIZE, pyxel.COLOR_YELLOW)
+    elapsed_time = pyxel.frame_count - frame0
+    paddle_x = move if elapsed_time == 1 else 0
+    success = (paddle_x == ball_x).item()
+    background_color = (
+        pyxel.COLOR_BLACK
+        if elapsed_time == 0
+        else STATUS_COLOR[success]
+    )
+    pyxel.cls(background_color)
+    pyxel.rect(
+        (paddle_x + 1) * PIXEL_SIZE,
+        PIXEL_SIZE,
+        PIXEL_SIZE,
+        PIXEL_SIZE,
+        pyxel.COLOR_WHITE,
+    )
+    pyxel.rect(
+        (ball_x + 1) * PIXEL_SIZE,
+        elapsed_time * PIXEL_SIZE,
+        PIXEL_SIZE,
+        PIXEL_SIZE,
+        pyxel.COLOR_YELLOW,
+    )
 
 
 pyxel.init(
