@@ -9,7 +9,7 @@ import torch
 # Constants
 # ------------------------------------------------------------------------------
 PIXEL_SIZE = 40
-INFO_HEIGHT = 23  # space above the arena for three lines of text
+INFO_HEIGHT = 16  # space above the arena for two lines of text
 GRID_SHAPE = (3, 2)
 FPS = 30
 STEP_FRAMES = 30  # frames per time step
@@ -75,10 +75,10 @@ def draw():
     mode = "MANUAL" if manual else "AUTO"
     pyxel.text(2, 2, f"{mode} (hit space to toggle)", pyxel.COLOR_WHITE)
     if elapsed_time == 1:
-        action = {-1: "MOVED LEFT", 0: "STAYED STILL", 1: "MOVED RIGHT"}[int(move)]
+        action = {-1: "<-", 0: "--", 1: "->"}[int(move)]
         pyxel.text(2, 9, action, pyxel.COLOR_WHITE)
         status = "SUCCESS" if success else "FAILURE"
-        pyxel.text(2, 16, status, background_color)
+        pyxel.text(14, 9, status, background_color)
     pyxel.rect(
         0,
         INFO_HEIGHT,
