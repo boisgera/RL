@@ -57,7 +57,7 @@ def update():
         new_round()
 
 
-def screen_x(x):
+def column(x):
     "Map x from [-1.0, 1.0] (leftmost/rightmost) to the cell index"
     index = round((float(x) + 1.0) / 2.0 * (GRID_SHAPE[0] - 1))
     return index
@@ -70,14 +70,14 @@ def draw():
     background_color = pyxel.COLOR_BLACK if elapsed_time == 0 else STATUS_COLOR[success]
     pyxel.cls(background_color)
     pyxel.rect(
-        screen_x(paddle_x) * PIXEL_SIZE,
+        column(paddle_x) * PIXEL_SIZE,
         (GRID_SHAPE[1] - 1) * PIXEL_SIZE,
         PIXEL_SIZE,
         PIXEL_SIZE,
         pyxel.COLOR_WHITE,
     )
     pyxel.rect(
-        screen_x(ball_x) * PIXEL_SIZE,
+        column(ball_x) * PIXEL_SIZE,
         elapsed_time * PIXEL_SIZE,
         PIXEL_SIZE,
         PIXEL_SIZE,
