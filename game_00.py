@@ -42,7 +42,7 @@ def new_round():
         with torch.no_grad():
             input = torch.tensor([ball_x]).float()
             choice = policy(input).argmax()
-            move = choice - 1.0
+            move = float(choice - 1.0)
 
 
 def update():
@@ -70,7 +70,7 @@ def draw_header(elapsed_time, success):
     mode = "MANUAL" if manual else "AUTO"
     pyxel.text(2, 2, f"{mode} (hit space to toggle)", pyxel.COLOR_WHITE)
     if elapsed_time == 1:
-        action = {-1: "<-", 0: "--", 1: "->"}[int(move)]
+        action = {-1.0: "<-", 0.0: "--", 1.0: "->"}[move]
         pyxel.text(2, 9, action, pyxel.COLOR_WHITE)
         status = "SUCCESS" if success else "FAILURE"
         pyxel.text(14, 9, status, STATUS_COLOR[success])
