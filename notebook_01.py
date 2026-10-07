@@ -52,8 +52,7 @@ def _(mo):
     mo.md(r"""
     ## Reward
 
-    The paddle starts at the center ($x=0$), so after the action $u \in \{-1, 0, 1\}$ its location is $u$.
-    The reward is 1 if the paddle catches the ball ($u = x_{\rm ref}$) and 0 otherwise.
+    The paddle starts at the center ($x=0$). The reward is 1 if the paddle catches the ball ($u = x_{\rm ref}$) and 0 otherwise.
     The actions are sampled from the policy (the softmax of the logits), so the mean reward is estimated by sampling.
     """)
     return
@@ -61,22 +60,22 @@ def _(mo):
 
 @app.cell
 def _(F, torch):
-    def sample_x_ref(num_samples=1):
+    def sample_target_x(shape):
         "Random values in {-1, 0, 1} (as floats)"
-        return torch.randint(-1, 2, (num_samples,)).float()
+        return torch.randint(-1, 2, shape).float()
 
-    def reward(x_ref, u):
-        x = u  # since x = x0 + u and x0 = 0
-        return (x == x_ref).float()
+    def reward(target_x, u):
+        paddle_x = u  # since x = x0 + u and x0 = 0
+        return (paddle_x == target_x).float()
 
     def mean_reward(model, num_samples=1_000):
         with torch.no_grad():
-            x_ref = sample_x_ref(num_samples).unsqueeze(1)
-            probas = F.softmax(model(x_ref), dim=-1)
-            u = torch.multinomial(probas, num_samples=1) - 1
-            return reward(x_ref, u).mean().item()
+            target_x = sample_target_x((num_samples, 1))
+            probas = F.softmax(model(target_x), dim=-1)
+            u = torch.multinomial(probas, num_samples=1) - 1.0
+            return reward(target_x, u).mean().item()
 
-    return mean_reward, reward, sample_x_ref
+    return mean_reward, reward, sample_target_x
 
 
 @app.cell(hide_code=True)
@@ -88,27 +87,26 @@ def _(mo):
     with respect to the model weights; we estimate its gradient with the REINFORCE (log-derivative) trick:
 
     $$
-    \nabla_{\theta} \mathbb{E}[r] = \mathbb{E}[r \, \nabla_{\theta} \log \pi_{\theta}(u \mid x_{\rm ref})]
+    \nabla_{\theta} \mathbb{E}[r] = \mathbb{E}[r \, \nabla_{\theta} \log \pi_{\theta}({\rm action} \mid {\rm target})]
     $$
     """)
     return
 
 
 @app.cell
-def _(F, reward, sample_x_ref, torch):
+def _(F, reward, sample_target_x, torch):
     def mean_reward_grad(model, num_samples=1_000):
         """
         Estimate the gradient of the mean reward wrt model weights
         using the REINFORCE log-derivative trick and sampling.
         The result is stored in the `grad` attribute of the model parameters.
         """
-        n = num_samples
-        x_ref = sample_x_ref(n).reshape((n, 1))  # batch of target positions
-        log_probs = F.log_softmax(model(x_ref), dim=-1)
+        target_x = sample_target_x((num_samples, 1))  # batch of target positions
+        log_probs = F.log_softmax(model(target_x), dim=-1)
         with torch.no_grad():
             index = torch.multinomial(log_probs.exp(), num_samples=1)
-            u = index - 1
-            r = reward(x_ref, u)
+            u = index - 1.0
+            r = reward(target_x, u)
         selected_log_probs = log_probs.gather(dim=1, index=index)
         value = (r * selected_log_probs).mean()
         model.zero_grad()
@@ -119,28 +117,33 @@ def _(F, reward, sample_x_ref, torch):
 
 @app.cell
 def _(DecisionModel, mean_reward, mean_reward_grad, mo, plt, torch):
-    def _():
+    def train_model(n=50_000):
         policy = DecisionModel()
         optimizer = torch.optim.Adam(policy.parameters(), maximize=True)
         rewards = [mean_reward(policy)]
-        for _ in range(5_000):
+        for _ in range(n):
             mean_reward_grad(policy)
             optimizer.step()
             rewards.append(mean_reward(policy))
-        torch.save(policy.state_dict(), "models/model01.pt")
+        return policy, rewards
 
-        plt.title("Mean reward during training")
-        plt.xlabel("step")
-        plt.plot(rewards)
-        plt.grid(True)
-        return mo.center(plt.gcf())
+    policy, rewards = train_model()
+    torch.save(policy.state_dict(), "models/model01.pt")
 
-    _()
-    return
+    plt.title("Mean reward during training")
+    plt.xlabel("step")
+    plt.plot(rewards)
+    plt.grid(True)
+    mo.center(plt.gcf())
+
+
+    return (policy,)
 
 
 @app.cell
-def _(DecisionModel, mo, plt, torch):
+def _(DecisionModel, mo, plt, policy, torch):
+    policy
+
     def _():
         policy = DecisionModel()
         policy.load_state_dict(torch.load("models/model01.pt"))
