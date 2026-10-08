@@ -46,13 +46,15 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The decision model now has a hidden layer of 16 units (with ReLU activation), used at every tick:
+    The decision model has the same architecture as the hand-crafted model of stage 5, a hidden layer of 3 units
+    (with ReLU activation), used at every tick, but its weights are now learned:
 
     - 3 inputs : the current paddle position $x_t$ and target position $\texttt{target\_x}$, between -1.0 (left) and 1.0 (right), and the target velocity $\texttt{target\_dx}$ in $\{-1.0, 0.0, 1.0\}$
     - 3 outputs : the logit of every possible action (move left, stay still, move right)
 
     In stage 4, the linear model could not reach the maximal mean reward: because of the rebounds on the walls,
     the position where the ball lands is not a linear function of its current position and velocity.
+    In stage 5, we have shown that 3 hidden units are enough to apply an optimal strategy.
     """)
     return
 
@@ -61,9 +63,9 @@ def _(mo):
 def _(torch):
     def DecisionModel():
         return torch.nn.Sequential(
-            torch.nn.Linear(in_features=3, out_features=16),
+            torch.nn.Linear(in_features=3, out_features=3),
             torch.nn.ReLU(),
-            torch.nn.Linear(in_features=16, out_features=3),
+            torch.nn.Linear(in_features=3, out_features=3),
         )
 
     return (DecisionModel,)
@@ -241,6 +243,17 @@ def _(
     plt.grid(True)
     mo.center(plt.gcf())
     return (policy,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The training does not work as well as the manual weight setting of stage 5: with 8 different random seeds,
+    the mean reward plateaus early (after less than 2000 steps) around 0.62 to 0.68, instead of 1.0, and the
+    deterministic (argmax) policy catches the ball in only 47 to 51 of the 75 initial states.
+    The architecture is expressive enough, but the gradient ascent gets stuck in a suboptimal policy.
+    """)
+    return
 
 
 @app.cell(hide_code=True)
