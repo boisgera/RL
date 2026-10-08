@@ -24,7 +24,7 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Breakout game, stage 5
+    # Breakout game, stage 6
 
     The game now takes place on a grid of width `WIDTH` and height `HEIGHT` (larger than 2).
     The paddle starts at a random (uniform) position on the lower level and the ball pops at a random (uniform)
@@ -46,14 +46,27 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    The decision model has the same inputs and outputs as in stage 4:
+    The decision model now has a hidden layer of 16 units (with ReLU activation), used at every tick:
 
     - 3 inputs : the current paddle position $x_t$ and target position $\texttt{target\_x}$, between -1.0 (left) and 1.0 (right), and the target velocity $\texttt{target\_dx}$ in $\{-1.0, 0.0, 1.0\}$
     - 3 outputs : the logit of every possible action (move left, stay still, move right)
 
-    but its single hidden layer has only 3 units (with ReLU activation), whose weights are set by hand.
+    In stage 4, the linear model could not reach the maximal mean reward: because of the rebounds on the walls,
+    the position where the ball lands is not a linear function of its current position and velocity.
     """)
     return
+
+
+@app.cell
+def _(torch):
+    def DecisionModel():
+        return torch.nn.Sequential(
+            torch.nn.Linear(in_features=3, out_features=16),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features=16, out_features=3),
+        )
+
+    return (DecisionModel,)
 
 
 @app.cell(hide_code=True)
@@ -135,110 +148,99 @@ def _(F, HEIGHT, WIDTH, torch):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Manual design
+    ## Training
 
-    Instead of training, we build the weights by hand, as in stage 0.
-
-    The model does not know the time $t$, so it cannot predict where the ball will land.
-    But the strategy "move towards the **next** position of the ball (where it will be after this tick),
-    stay still if already there" always catches the ball (it can be checked on the $5 \times 5 \times 3$
-    initial states, see below).
-
-    With $h = 2 / ({\rm WIDTH} - 1)$ the size of a cell, the next position of the ball is
-    obtained from $m = \texttt{target\_x} + h \, \texttt{target\_dx}$ by folding it into $[-1, 1]$:
+    Same method as in stage 2, gradient ascent of the mean reward, but the reward now depends on the whole
+    sequence of actions $u_0, \dots, u_{H-2}$ (with $H = {\rm HEIGHT}$). The REINFORCE trick still applies;
+    the log-probability of a trajectory is the sum of the log-probabilities of its actions:
 
     $$
-    n = m - 2 \, \mathrm{ReLU}(m - 1) + 2 \, \mathrm{ReLU}(-1 - m)
+    \nabla_{\theta} \mathbb{E}[r] = \mathbb{E}\left[r \, \sum_{t=0}^{H-2} \nabla_{\theta} \log \pi_{\theta}(u_t \mid x_t, \texttt{target\_x}, \texttt{target\_dx})\right]
     $$
 
-    and the signed distance $e = n - x_t$ to the paddle can be computed with 3 hidden ReLU units:
-
-    $$
-    e = \underbrace{\mathrm{ReLU}(m - x_t + c)}_{\mbox{always} \, > 0} - c - 2 \, \mathrm{ReLU}(m - 1) + 2 \, \mathrm{ReLU}(-1 - m), \quad c = 2 + h
-    $$
-
-    Then, exactly as in stage 0, with $k = e / h$ the distance in cells:
-
-    - move left logit: $-\Delta (2k + 1)$
-    - stay still logit: $0$
-    - move right logit: $\Delta (2k - 1)$
+    So we first simulate the trajectories (without gradient tracking), then sum the log-probabilities of the actions
+    that were taken.
     """)
     return
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    log10_delta_slider = mo.ui.slider(start=0, stop=10, step=1, value=1, show_value=True, label=r"$\log_{10} \Delta$")
-    mo.md(rf'''
-    Increase $\Delta$ to get "sharper" decisions
-
-    {log10_delta_slider}''')
-    return (log10_delta_slider,)
-
-
 @app.cell
-def _(WIDTH, log10_delta_slider, torch):
-    delta = 10**log10_delta_slider.value
-
-    def DecisionModel():
-        return torch.nn.Sequential(
-            torch.nn.Linear(in_features=3, out_features=3),
-            torch.nn.ReLU(),
-            torch.nn.Linear(in_features=3, out_features=3),
-        )
-
-    def setup(model, delta=delta):
-        h = 2.0 / (WIDTH - 1)
-        c = 2.0 + h
-        s = 2.0 * delta / h  # logit slope wrt e
-        hidden, output = model[0], model[2]
+def _(
+    F,
+    HEIGHT,
+    model_input,
+    reward,
+    sample_position,
+    sample_velocity,
+    step,
+    torch,
+):
+    def mean_reward_grad(model, num_samples=1_000):
+        """
+        Estimate the gradient of the mean reward wrt model weights
+        using the REINFORCE log-derivative trick and sampling.
+        The result is stored in the `grad` attribute of the model parameters.
+        """
         with torch.no_grad():
-            # inputs: x, target_x, target_dx
-            hidden.weight.copy_(torch.tensor([
-                [-1.0, 1.0, h],  # m - x + c
-                [0.0, 1.0, h],  # m - 1
-                [0.0, -1.0, -h],  # -1 - m
-            ]))
-            hidden.bias.copy_(torch.tensor([c, -1.0, -1.0]))
-            # e = hidden_0 - 2 * hidden_1 + 2 * hidden_2 - c
-            output.weight.copy_(torch.tensor([
-                [-s, 2 * s, -2 * s],  # move left
-                [0.0, 0.0, 0.0],  # stay still
-                [s, -2 * s, 2 * s],  # move right
-            ]))
-            output.bias.copy_(torch.tensor([s * c - delta, 0.0, -s * c - delta]))
+            x = sample_position((num_samples, 1))
+            target_x = sample_position((num_samples, 1))
+            target_dx = sample_velocity((num_samples, 1))
+            history = [(x, target_x, target_dx)]
+            indices = []
+            for _t in range(HEIGHT - 1):
+                input = model_input(x, target_x, target_dx)
+                probas = F.softmax(model(input), dim=-1)
+                index = torch.multinomial(probas, num_samples=1)
+                indices.append(index)
+                u = index - 1
+                x, target_x, target_dx = step(x, target_x, target_dx, u)
+                history.append((x, target_x, target_dx))
+            r = reward(x, target_x)
 
-    policy = DecisionModel()
-    setup(policy)
-    torch.save(policy.state_dict(), "models/model05.pt")
-    return (policy,)
+        log_probs_sum = 0.0
+        for t in range(HEIGHT - 1):
+            input = model_input(*history[t])
+            log_probs = F.log_softmax(model(input), dim=-1)
+            log_probs_sum = log_probs_sum + log_probs.gather(dim=1, index=indices[t])
 
+        value = (r * log_probs_sum).mean()
+        model.zero_grad()
+        value.backward()
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    Exhaustive check of the deterministic (argmax) policy on every initial state:
-    """)
-    return
+    return (mean_reward_grad,)
 
 
 @app.cell
-def _(HEIGHT, WIDTH, model_input, policy, reward, step, torch):
-    def _():
-        i = torch.arange(WIDTH).float()
-        x, target_x, target_dx = torch.meshgrid(
-            2.0 * i / (WIDTH - 1) - 1.0, 2.0 * i / (WIDTH - 1) - 1.0, torch.tensor([-1.0, 0.0, 1.0]), indexing="ij"
-        )
-        x, target_x, target_dx = x.reshape(-1, 1), target_x.reshape(-1, 1), target_dx.reshape(-1, 1)
-        with torch.inference_mode():
-            for _t in range(HEIGHT - 1):
-                u = policy(model_input(x, target_x, target_dx)).argmax(dim=1, keepdim=True) - 1.0
-                x, target_x, target_dx = step(x, target_x, target_dx, u)
-        r = reward(x, target_x)
-        return f"{int(r.sum())} / {len(r)} initial states caught"
+def _(
+    DecisionModel,
+    max_mean_reward,
+    mean_reward,
+    mean_reward_grad,
+    mo,
+    plt,
+    torch,
+):
+    def train_model(n=10_000):
+        policy = DecisionModel()
+        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-2, maximize=True)
+        rewards = [mean_reward(policy)]
+        for _ in range(n):
+            mean_reward_grad(policy)
+            optimizer.step()
+            rewards.append(mean_reward(policy))
+        return policy, rewards
 
-    _()
-    return
+    policy, rewards = train_model()
+    torch.save(policy.state_dict(), "models/model06.pt")
+
+    plt.title("Mean reward during training")
+    plt.xlabel("step")
+    plt.plot(rewards)
+    plt.axhline(max_mean_reward(), color="black", linestyle="--", label=f"max mean reward ({max_mean_reward():.2f})")
+    plt.legend()
+    plt.grid(True)
+    mo.center(plt.gcf())
+    return (policy,)
 
 
 @app.cell(hide_code=True)

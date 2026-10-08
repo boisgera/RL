@@ -19,11 +19,11 @@ STATUS_COLOR = {True: pyxel.COLOR_LIME, False: pyxel.COLOR_RED}
 # Policy Model
 # ------------------------------------------------------------------------------
 policy = torch.nn.Sequential(
-    torch.nn.Linear(in_features=3, out_features=3),
+    torch.nn.Linear(in_features=3, out_features=16),
     torch.nn.ReLU(),
-    torch.nn.Linear(in_features=3, out_features=3),
+    torch.nn.Linear(in_features=16, out_features=3),
 )
-policy.load_state_dict(torch.load("models/model05.pt"))
+policy.load_state_dict(torch.load("models/model06.pt"))
 
 
 # Game State
@@ -139,7 +139,7 @@ def draw():
 pyxel.init(
     GRID_SHAPE[0] * PIXEL_SIZE,
     INFO_HEIGHT + GRID_SHAPE[1] * PIXEL_SIZE,
-    title="Breakout 05",
+    title="Breakout 06",
     fps=FPS,
 )
 new_round()
