@@ -292,7 +292,7 @@ def _(
         if seed is not None:
             torch.manual_seed(seed)
         policy = DecisionModel()
-        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3, maximize=True)
+        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-2, maximize=True)
         rewards = [mean_reward(policy)]
         entropies = [mean_entropy(policy)]
         for _ in range(n):
@@ -302,7 +302,7 @@ def _(
             entropies.append(mean_entropy(policy, num_samples=1_000))
         return policy, rewards, entropies
 
-    policy, rewards, entropies = train_model(n=2_000, seed=0)
+    policy, rewards, entropies = train_model(n=500)
     torch.save(policy.state_dict(), "models/model08.pt")
     fig, (ax_reward, ax_entropy) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
     ax_reward.set_title("Mean reward during training")
