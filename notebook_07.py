@@ -252,6 +252,21 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    The larger network does not escape the plateau: with 5 different random seeds, the mean reward
+    plateaus early (after less than 2000 steps) around 0.60 to 0.70, and the deterministic (argmax) policy
+    catches the ball in only 45 to 52 of the 75 initial states, just like the 3-hidden-unit network of stage 6.
+    The size of the network is not the bottleneck.
+
+    The mean reward of the sampled policy is almost equal to the fraction of initial states caught by the
+    deterministic policy: the policy seems to have become (almost) deterministic. It would then not explore other actions anymore,
+    and since the log-probabilities of the chosen actions are close to 0, so are their gradients.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     The policy depends on the paddle and target positions $(x_t, \texttt{target\_x})$ and on the target
     velocity $\texttt{target\_dx}$, so we show heatmaps over the $(\texttt{target\_x}, x_t)$ plane, one per action
     (columns) and per target velocity (rows), for the action probabilities.
