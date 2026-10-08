@@ -233,15 +233,7 @@ def _(mo):
 
 
 @app.cell
-def _(
-    F,
-    HEIGHT,
-    model_input,
-    sample_position,
-    sample_velocity,
-    step,
-    torch,
-):
+def _(F, HEIGHT, model_input, sample_position, sample_velocity, step, torch):
     def max_entropy():
         "Entropy of the uniform distribution over the 3 actions"
         return torch.log(torch.tensor(3.0)).item()
@@ -291,7 +283,7 @@ def _(
             entropies.append(mean_entropy(policy, num_samples=1_000))
         return policy, rewards, entropies
 
-    policy, rewards, entropies = train_model(n=1_000)
+    policy, rewards, entropies = train_model(n=1_000, seed=0)
     torch.save(policy.state_dict(), "models/model07.pt")
     fig, (ax_reward, ax_entropy) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
     ax_reward.set_title("Mean reward during training")
