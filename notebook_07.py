@@ -216,36 +216,100 @@ def _(
     return (mean_reward_grad,)
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    To detect a premature collapse of the policy (which would stop the exploration), we also monitor
+    during training the mean entropy of the action distribution over the states visited by the policy:
+
+    $$
+    H(\pi_{\theta}(\cdot \mid s)) = - \sum_{u \in \{-1, 0, 1\}} \pi_{\theta}(u \mid s) \log \pi_{\theta}(u \mid s)
+    $$
+
+    With 3 possible actions, the entropy is between 0 (deterministic policy) and $\log 3 \approx 1.099$
+    (uniform policy).
+    """)
+    return
+
+
+@app.cell
+def _(
+    F,
+    HEIGHT,
+    model_input,
+    sample_position,
+    sample_velocity,
+    step,
+    torch,
+):
+    def max_entropy():
+        "Entropy of the uniform distribution over the 3 actions"
+        return torch.log(torch.tensor(3.0)).item()
+
+    def mean_entropy(model, num_samples=1_000):
+        "Mean entropy of the action distribution over the states visited by the policy"
+        with torch.no_grad():
+            x = sample_position((num_samples, 1))
+            target_x = sample_position((num_samples, 1))
+            target_dx = sample_velocity((num_samples, 1))
+            entropies = []
+            for _t in range(HEIGHT - 1):
+                input = model_input(x, target_x, target_dx)
+                log_probas = F.log_softmax(model(input), dim=-1)
+                probas = log_probas.exp()
+                entropies.append(-(probas * log_probas).sum(dim=-1))
+                u = torch.multinomial(probas, num_samples=1) - 1.0
+                x, target_x, target_dx = step(x, target_x, target_dx, u)
+            return torch.cat(entropies).mean().item()
+
+    return max_entropy, mean_entropy
+
+
 @app.cell
 def _(
     DecisionModel,
+    max_entropy,
     max_mean_reward,
+    mean_entropy,
     mean_reward,
     mean_reward_grad,
     mo,
     plt,
     torch,
 ):
-    def train_model(n=10_000):
+    def train_model(n=1_000, seed=None):
+        if seed is not None:
+            torch.manual_seed(seed)
         policy = DecisionModel()
-        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-2, maximize=True)
+        optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3, maximize=True)
         rewards = [mean_reward(policy)]
+        entropies = [mean_entropy(policy)]
         for _ in range(n):
-            mean_reward_grad(policy)
+            mean_reward_grad(policy, num_samples=1_000)
             optimizer.step()
-            rewards.append(mean_reward(policy))
-        return policy, rewards
+            rewards.append(mean_reward(policy, num_samples=1_000))
+            entropies.append(mean_entropy(policy, num_samples=1_000))
+        return policy, rewards, entropies
 
-    policy, rewards = train_model()
+    policy, rewards, entropies = train_model(n=1_000)
     torch.save(policy.state_dict(), "models/model07.pt")
-
-    plt.title("Mean reward during training")
-    plt.xlabel("step")
-    plt.plot(rewards)
-    plt.axhline(max_mean_reward(), color="black", linestyle="--", label=f"max mean reward ({max_mean_reward():.2f})")
-    plt.legend()
-    plt.grid(True)
-    mo.center(plt.gcf())
+    fig, (ax_reward, ax_entropy) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+    ax_reward.set_title("Mean reward during training")
+    ax_reward.plot(rewards, label="mean reward", color='C0', alpha=0.8)
+    final_reward = rewards[-1]
+    ax_reward.axhline(final_reward, color="C0", linestyle="--", label=f"final mean reward ({final_reward:.2f})")
+    ax_reward.axhline(max_mean_reward(), color="black", linestyle="--", label=f"max mean reward ({max_mean_reward():.2f})")
+    ax_reward.legend()
+    ax_reward.grid(True)
+    ax_entropy.set_title("Mean policy entropy during training")
+    ax_entropy.set_xlabel("step")
+    ax_entropy.plot(entropies, label="mean entropy", color='C1', alpha=0.8)
+    ax_entropy.axhline(max_entropy(), color="black", linestyle="--", label=f"max entropy (log 3 = {max_entropy():.3f})")
+    ax_entropy.set_ylim(0.0, 1.1 * max_entropy())
+    ax_entropy.legend()
+    ax_entropy.grid(True)
+    fig.tight_layout()
+    mo.center(fig)
     return (policy,)
 
 
