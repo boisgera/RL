@@ -96,12 +96,12 @@ def _(F, HEIGHT, WIDTH, torch):
         return torch.cat((x, target_x, target_dx), dim=-1)
 
     def rebound_in_place(target_x, target_dx):
-        i_right = torch.nonzero(target_x > 1.0)
-        target_x[i_right] = 2.0 - target_x[i_right]
-        target_dx[i_right] = - target_dx[i_right]
-        i_left = torch.nonzero(target_x < -1.0)
-        target_x[i_left] = -2.0 - target_x[i_left]
-        target_dx[i_left] = - target_dx[i_left]
+        right = target_x > 1.0
+        target_x[right] = 2.0 - target_x[right]
+        target_dx[right] = - target_dx[right]
+        left = target_x < -1.0
+        target_x[left] = -2.0 - target_x[left]
+        target_dx[left] = - target_dx[left]
 
     def step(x, target_x, target_dx, u):
         "Paddle and ball position after the move u in {-1, 0, 1}"
